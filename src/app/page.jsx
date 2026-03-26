@@ -14,14 +14,14 @@ const handleSubmit = async () => {
 
   setLoading(true);
 
-  // ✅ USER ID
+
   let userId = localStorage.getItem("chat_user_id");
   if (!userId) {
     userId = crypto.randomUUID();
     localStorage.setItem("chat_user_id", userId);
   }
 
-  // ✅ STEP 1: Save USER message
+  
   const { error: userError } = await supabase
     .from("chat_messages")
     .insert({
@@ -32,12 +32,9 @@ const handleSubmit = async () => {
 
   console.log("USER INSERT ERROR:", userError);
 
-  // ❌ REMOVE history fetch (useless right now)
-
-  // ✅ STEP 2: Ask AI (SIMPLE STRING)
+  
   const answer = await askGemini(input);
 
-  // ✅ STEP 3: Save AI response
   const { error: aiError } = await supabase
     .from("chat_messages")
     .insert({
@@ -48,7 +45,7 @@ const handleSubmit = async () => {
 
   console.log("AI INSERT ERROR:", aiError);
 
-  // ✅ STEP 4: Update UI
+  
   setHistory((prev) => [
     ...prev,
     { role: "user", text: input },

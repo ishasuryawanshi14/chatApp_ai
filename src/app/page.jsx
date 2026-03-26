@@ -1,124 +1,105 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { askGemini } from "./actions";
 import { supabase } from "@/lib/supabase";
-
-function getUserId() {
-  let id = localStorage.getItem("chat_user_id");
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem("chat_user_id", id);
-  }
-  return id;
-}
 
 export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
 
-  useEffect(() => {
-    const userId = getUserId();
+const handleSubmit = async () => {
+  if (!input.trim()) return;
 
-    async function loadChat() {
-      const { data } = await supabase
-        .from("chat_messages")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: true });
+  setLoading(true);
 
-      if (data) {
-        const formatted = [];
-        for (let i = 0; i < data.length; i += 2) {
-          formatted.push({
-            question: data[i]?.text,
-            answer: data[i + 1]?.text,
-          });
-        }
-        setHistory(formatted);
-      }
-    }
+  // ✅ USER ID
+  let userId = localStorage.getItem("chat_user_id");
+  if (!userId) {
+    userId = crypto.randomUUID();
+    localStorage.setItem("chat_user_id", userId);
+  }
 
-    loadChat();
-  }, []);
-
-  const handleSubmit = async () => {
-    if (!input.trim()) return;
-    const userId = getUserId();
-    setLoading(true);
-
-    await supabase.from("chat_messages").insert({
+  // ✅ STEP 1: Save USER message
+  const { error: userError } = await supabase
+    .from("chat_messages")
+    .insert({
       user_id: userId,
       role: "user",
       text: input,
     });
 
-    const { data: messages } = await supabase
-      .from("chat_messages")
-      .select("role, text")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(10);
+  console.log("USER INSERT ERROR:", userError);
 
-      console.log("messages:", messages);
+  // ❌ REMOVE history fetch (useless right now)
 
+  // ✅ STEP 2: Ask AI (SIMPLE STRING)
+  const answer = await askGemini(input);
 
-    const contents = messages.map((m) => ({
-      role: m.role,
-      parts: [{ text: m.text }],
-    }));
-
-    const answer = await askGemini(contents);
-
-    await supabase.from("chat_messages").insert({
+  // ✅ STEP 3: Save AI response
+  const { error: aiError } = await supabase
+    .from("chat_messages")
+    .insert({
       user_id: userId,
       role: "model",
       text: answer,
     });
 
-    setHistory((prev) => prev.concat({ question: input, answer }));
-    setInput("");
-    setLoading(false);
-  };
- 
- return (
-  <div className="app">
-    <div className="chatContainer">
-      <div className="topBar">
-  <div className="brand">AI Assistant</div>
+  console.log("AI INSERT ERROR:", aiError);
+
+  // ✅ STEP 4: Update UI
+  setHistory((prev) => [
+    ...prev,
+    { role: "user", text: input },
+    { role: "model", text: answer },
+  ]);
+
+  setInput("");
+  setLoading(false);
+};
+  return (
+    <div className="app">
+      <div className="chatContainer">
+        <div className="topBar">
+          <div className="brand">AI Assistant</div>
+        </div>
+
+        <div className="messages">
+  {history.map((msg, i) => (
+    <div key={i} className="messageBlock">
+
+      {msg.role === "user" && (
+        <div className="userRow">
+          <div className="avatar userAvatar">U</div>
+          <div className="bubble userBubble">{msg.text}</div>
+        </div>
+      )}
+
+      {msg.role === "model" && (
+        <div className="aiRow">
+          <div className="avatar aiAvatar">AI</div>
+          <div className="bubble aiBubble">{msg.text}</div>
+        </div>
+      )}
+
+    </div>
+  ))}
 </div>
 
-
-      <div className="messages">
-        {history.map((item, i) => (
-          <div key={i} className="messageBlock">
-            <div className="userRow">
-              <div className="avatar userAvatar">U</div>
-              <div className="bubble userBubble">{item.question}</div>
-            </div>
-
-            <div className="aiRow">
-              <div className="avatar aiAvatar">AI</div>
-              <div className="bubble aiBubble">{item.answer}</div>
-            </div>
-          </div>
-        ))}
+        <div className="inputSection">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask something..."
+          />
+          <button onClick={handleSubmit} disabled={loading}>
+            {loading ? "Generating..." : "Send"}
+          </button>
+        </div>
       </div>
 
-      <div className="inputSection">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask something..."
-        />
-        <button onClick={handleSubmit} disabled={loading}>
-          {loading ? "Generating..." : "Send"}
-        </button>
-      </div>
-    </div>
-
-    <style jsx>{`
+      <style jsx>{`
       .app {
         height: 100vh;
         background: #0f172a;
